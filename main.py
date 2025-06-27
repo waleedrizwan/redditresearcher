@@ -1,4 +1,4 @@
-from researcher import get_subreddit_data, save_to_csv
+from researcher import get_subreddit_data, save_data
 import os
 from dotenv import load_dotenv
 
@@ -34,9 +34,9 @@ if __name__ == "__main__":
             print(f"\nSuccessfully retrieved data for {len(subreddit_data)} posts.")
             
             # Save the data to a CSV file
-            print("Saving data to CSV file...")
-            save_to_csv(subreddit_data, SUBREDDIT_TO_RESEARCH)
-            print(f"\nSuccess! Data has been written to {SUBREDDIT_TO_RESEARCH}_posts.csv")
+            print("Saving data to files...")
+            save_data(subreddit_data, SUBREDDIT_TO_RESEARCH)
+            print(f"\nSuccess! Data has been written to {SUBREDDIT_TO_RESEARCH}_posts.csv, {SUBREDDIT_TO_RESEARCH}_posts.xlsx, and {SUBREDDIT_TO_RESEARCH}_report.html")
         else:
             print("No data was retrieved. Exiting.")
             

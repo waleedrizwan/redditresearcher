@@ -1,3 +1,5 @@
 pandas
 praw
 python-dotenv
+pytextrank
+openpyxl
