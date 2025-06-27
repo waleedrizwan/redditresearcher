@@ -3,20 +3,53 @@ import pandas as pd
 import time
 import spacy
 import pytextrank
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# Download VADER lexicon for sentiment analysis (only needs to be done once)
+try:
+    nltk.data.find('sentiment/vader_lexicon.zip')
+except nltk.downloader.DownloadError:
+    nltk.download('vader_lexicon')
+
+# Initialize the sentiment analyzer
+sia = SentimentIntensityAnalyzer()
 
 # Load spaCy model and add TextRank
 nlp = spacy.load("en_core_web_sm")
+# increase max length to handle long comment threads
+nlp.max_length = 2000000 
 nlp.add_pipe("textrank")
 
-def summarize_text(text, limit_phrases=5):
+def summarize_text(text, limit_sentences=3):
     """
-    Summarizes text using pytextrank to extract key phrases.
+    Summarizes text by extracting the most relevant sentences.
     """
     if not text or not isinstance(text, str) or len(text.strip()) == 0:
         return ""
     doc = nlp(text)
-    phrases = [p.text for p in doc._.phrases[:limit_phrases]]
-    return ". ".join(phrases)
+    # Extracting the top sentences from the text
+    sentences = [sent.text for sent in doc._.textrank.summary(limit_phrases=15, limit_sentences=limit_sentences)]
+    return " ".join(sentences)
+
+def analyze_sentiment(text):
+    """
+    Analyzes the sentiment of a text and returns a label and a compound score.
+    """
+    if not text or not isinstance(text, str) or len(text.strip()) == 0:
+        return 'Neutral', 0.0
+    
+    # Get sentiment scores
+    scores = sia.polarity_scores(text)
+    compound_score = scores['compound']
+    
+    # Classify sentiment based on compound score
+    if compound_score >= 0.05:
+        return 'Positive', compound_score
+    elif compound_score <= -0.05:
+        return 'Negative', compound_score
+    else:
+        return 'Neutral', compound_score
 
 def get_subreddit_data(client_id, secret_key, username, password, user_agent, subreddit_name, limit=25):
     """
@@ -43,19 +76,21 @@ def get_subreddit_data(client_id, secret_key, username, password, user_agent, su
         for comment in post.comments.list():
             all_comments.append(comment.body)
         
-        all_comments_text = " | ".join(all_comments)
+        all_comments_text = " ".join(all_comments)
+        sentiment_label, sentiment_score = analyze_sentiment(all_comments_text)
         
         posts_data.append({
             'post_id': post.id,
             'title': post.title,
-            'title_summary': summarize_text(post.title),
             'score': post.score,
             'upvote_ratio': post.upvote_ratio,
             'url': post.url,
             'num_comments': post.num_comments,
             'created_utc': post.created_utc,
-            'all_comments': all_comments_text, # Join comments with a separator
-            'comments_summary': summarize_text(all_comments_text)
+            'all_comments': all_comments_text,
+            'comments_summary': summarize_text(all_comments_text),
+            'sentiment_label': sentiment_label,
+            'sentiment_score': sentiment_score
         })
         print(f"Processed post: {post.title}")
         time.sleep(0.2) # Be respectful to Reddit's API rate limits
@@ -115,14 +150,26 @@ def save_to_html(data, subreddit_name):
 
     df = pd.DataFrame(data)
     
+    # --- Sentiment Styling ---
+    def style_sentiment(label):
+        if label == 'Positive':
+            return 'color: #28a745; font-weight: bold;'
+        elif label == 'Negative':
+            return 'color: #dc3545; font-weight: bold;'
+        else:
+            return 'color: #6c757d;'
+            
+    df['sentiment_styled'] = df['sentiment_label'].apply(lambda x: f'<span style="{style_sentiment(x)}">{x}</span>')
+
     # Create clickable links for post titles
     df['title'] = df.apply(lambda row: f'<a href="{row["url"]}" target="_blank">{row["title"]}</a>', axis=1)
     
     # Select and rename columns for the report
-    report_df = df[['title', 'comments_summary', 'score', 'num_comments', 'upvote_ratio']].copy()
+    report_df = df[['title', 'comments_summary', 'sentiment_styled', 'score', 'num_comments', 'upvote_ratio']].copy()
     report_df.rename(columns={
         'title': 'Post Title',
         'comments_summary': 'Discussion Summary',
+        'sentiment_styled': 'Sentiment',
         'score': 'Score',
         'num_comments': 'Comments',
         'upvote_ratio': 'Upvote Ratio'
